@@ -88,7 +88,7 @@ export class PassportVerifyStrategy extends Strategy {
 
   success (user: any, info: TranslatedResponseBody) { throw new Error('`success` should be overridden by passport') }
   fail (challenge: any, status?: number) { throw new Error('`fail` should be overridden by passport') }
-  error (reason: Error) { throw reason }
+  error (reason: Error) { console.log('the thing was invoked'); throw reason }
 
   private _handleRequest (req: express.Request) {
     if (req.body && req.body.SAMLResponse) {
@@ -101,23 +101,22 @@ export class PassportVerifyStrategy extends Strategy {
   private async _translateResponse (req: express.Request) {
     const requestId = this.loadRequestId(req)
     const samlResponse = (req as any).body.SAMLResponse
-    const response = await this.client.translateResponse(samlResponse, requestId)
-    if (response.status === 200) {
-      const user = await this._acceptUser(response.body as TranslatedResponseBody)
-      if (user) {
-        this.success(user, response.body as TranslatedResponseBody)
+    try {
+      const response = await this.client.translateResponse(samlResponse, requestId)
+      if (response.status === 200) {
+        const user = await this._acceptUser(response.body as TranslatedResponseBody)
+        if (user) {
+          this.success(user, response.body as TranslatedResponseBody)
+        } else {
+          this.fail(USER_NOT_ACCEPTED_ERROR)
+        }
       } else {
-        this.fail(USER_NOT_ACCEPTED_ERROR)
+        this.fail(response.body)
       }
-    } else if (response.status === 401) {
-      const errorBody = response.body as ErrorBody
-      this.fail(errorBody.reason, response.status)
-    } else if ([400, 500].includes(response.status)) {
-      const errorBody = response.body as ErrorBody
-      throw new Error(errorBody.reason)
-    } else {
-      throw new Error(response.body as any)
+    } catch (error) {
+      this.fail(error)
     }
+
   }
 
   private async _acceptUser (user: TranslatedResponseBody) {
@@ -128,16 +127,16 @@ export class PassportVerifyStrategy extends Strategy {
     }
   }
 
-  private async _renderAuthnRequest (request: express.Request): Promise<express.Response> {
-    const authnRequestResponse = await this.client.generateAuthnRequest()
-    if (authnRequestResponse.status === 200) {
+  private async _renderAuthnRequest (request: express.Request): Promise<express.Response | undefined> {
+    try {
+      const authnRequestResponse = await this.client.generateAuthnRequest()
       const authnRequestResponseBody = authnRequestResponse.body as AuthnRequestResponse
       this.saveRequestId(authnRequestResponseBody.requestId, request)
       const response = (request as any).res
       return response.send(createSamlForm(authnRequestResponseBody.ssoLocation, authnRequestResponseBody.samlRequest))
-    } else {
-      const errorBody = authnRequestResponse.body as ErrorBody
-      throw new Error(errorBody.reason)
+    } catch (error) {
+      const errorBody = error.body as ErrorBody
+      this.fail(errorBody)
     }
   }
 }

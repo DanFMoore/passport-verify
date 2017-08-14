@@ -9,6 +9,9 @@ import * as request from 'request-promise-native'
 
 export interface Logger {
   info (message?: any, ...optionalParams: any[]): void
+  error (message?: any, ...optionalParams: any[]): void
+  trace (message?: any, ...optionalParams: any[]): void
+  warn (message?: any, ...optionalParams: any[]): void
 }
 
 export default class VerifyServiceProviderClient {
@@ -31,10 +34,8 @@ export default class VerifyServiceProviderClient {
         body: responseBody
       }
     } catch (reason) {
-      return {
-        status: reason.statusCode,
-        body: reason.error
-      }
+      this.logger.error('passport-verify', '' + reason.error)
+      throw new Error(reason.message)
     }
   }
 
